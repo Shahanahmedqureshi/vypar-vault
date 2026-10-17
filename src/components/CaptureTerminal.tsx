@@ -9,7 +9,9 @@ import {
   Check,
   Sparkles,
   Zap,
-  RotateCcw
+  RotateCcw,
+  FileText,
+  Eye
 } from 'lucide-react';
 import { validateGSTIN } from '../utils/gstinValidator';
 import { generateSampleBillCanvas } from '../utils/generateSampleBill';
@@ -41,6 +43,8 @@ export const CaptureTerminal: React.FC<CaptureTerminalProps> = ({
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [imageMimeType, setImageMimeType] = useState<string>('image/png');
   const [imageFileName, setImageFileName] = useState<string>('');
+  const [imageFileSize, setImageFileSize] = useState<string>('');
+  const [isImageEncoding, setIsImageEncoding] = useState<boolean>(false);
 
   const [audioBase64, setAudioBase64] = useState<string | null>(null);
   const [audioMimeType, setAudioMimeType] = useState<string>('audio/mp3');
@@ -55,6 +59,7 @@ export const CaptureTerminal: React.FC<CaptureTerminalProps> = ({
   const simulationTimerRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
+  const dragCounterRef = useRef<number>(0);
 
   const gstinValidation = validateGSTIN(gstinInput);
 
@@ -88,23 +93,35 @@ export const CaptureTerminal: React.FC<CaptureTerminalProps> = ({
     const selectedVariant = variant || activePreset;
     const generated = generateSampleBillCanvas(selectedVariant);
     setImagePreview(generated.dataUrl);
-    setImageBase64(generated.dataUrl.replace(/^data:image\/[a-zA-Z+]+;base64,/, ''));
+    const cleanB64 = generated.dataUrl.includes(';base64,')
+      ? generated.dataUrl.split(';base64,')[1]
+      : generated.dataUrl;
+    setImageBase64(cleanB64.trim());
     setImageMimeType(generated.mimeType);
     setImageFileName(`kachha_bill_${selectedVariant}.png`);
+    setImageFileSize('128.4 KB');
   };
 
-  // File Upload Handlers (Image)
+  // File Upload Handlers (Image with robust Base64 conversion)
   const handleImageFile = (file: File) => {
     if (!file.type.startsWith('image/')) return;
+
+    setIsImageEncoding(true);
     setImageFileName(file.name);
-    setImageMimeType(file.type);
+    setImageMimeType(file.type || 'image/jpeg');
+    setImageFileSize(`${(file.size / 1024).toFixed(1)} KB`);
 
     const reader = new FileReader();
     reader.onload = (e) => {
       const dataUrl = e.target?.result as string;
       setImagePreview(dataUrl);
-      const cleanB64 = dataUrl.replace(/^data:image\/[a-zA-Z+]+;base64,/, '');
-      setImageBase64(cleanB64);
+      const cleanB64 = dataUrl.includes(';base64,') ? dataUrl.split(';base64,')[1] : dataUrl;
+      setImageBase64(cleanB64.trim());
+      setIsImageEncoding(false);
+    };
+    reader.onerror = () => {
+      console.error('Failed to read image file');
+      setIsImageEncoding(false);
     };
     reader.readAsDataURL(file);
   };
@@ -117,28 +134,44 @@ export const CaptureTerminal: React.FC<CaptureTerminalProps> = ({
     const reader = new FileReader();
     reader.onload = (e) => {
       const dataUrl = e.target?.result as string;
-      const cleanB64 = dataUrl.replace(/^data:audio\/[a-zA-Z+]+;base64,/, '');
-      setAudioBase64(cleanB64);
+      const cleanB64 = dataUrl.includes(';base64,') ? dataUrl.split(';base64,')[1] : dataUrl;
+      setAudioBase64(cleanB64.trim());
     };
     reader.readAsDataURL(file);
   };
 
-  // Drag and drop
-  const handleDrag = (e: React.DragEvent) => {
+  // Drag and drop event handlers with drag counter to eliminate child flicker
+  const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
+    dragCounterRef.current += 1;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
       setDragActive(true);
-    } else if (e.type === 'dragleave') {
-      setDragActive(false);
     }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      setDragActive(false);
+      dragCounterRef.current = 0;
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+    dragCounterRef.current = 0;
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
       if (file.type.startsWith('image/')) {
         handleImageFile(file);
@@ -147,6 +180,29 @@ export const CaptureTerminal: React.FC<CaptureTerminalProps> = ({
       }
     }
   };
+
+  const triggerFileInput = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  };
+
+  // Clipboard paste support (Ctrl+V screenshot/photo paste)
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      if (e.clipboardData && e.clipboardData.files.length > 0) {
+        const item = e.clipboardData.files[0];
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          handleImageFile(item);
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, []);
 
   // Seamless Zero-Fail Microphone & Dictation Stream
   const startStreamingSimulation = () => {
@@ -270,7 +326,7 @@ export const CaptureTerminal: React.FC<CaptureTerminalProps> = ({
           Multimodal Capture Studio
         </h2>
         <p className="text-xs text-slate-500 mt-1">
-          Hinglish voice audio, handwritten kachha bills, or Mandi field notes.
+          Hinglish voice notes, handwritten kachha bills (OCR), or typed mandi entries.
         </p>
       </div>
 
@@ -431,10 +487,10 @@ export const CaptureTerminal: React.FC<CaptureTerminalProps> = ({
         )}
       </div>
 
-      {/* 4. Aesthetic Drag-and-Drop Kachha Bill Image Uploader */}
+      {/* 4. Robust Drag-and-Drop Kachha Bill Image Uploader with File Input */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-medium text-slate-700 flex items-center gap-1.5">
+          <label htmlFor="bill-image-file-input" className="text-xs font-medium text-slate-700 flex items-center gap-1.5">
             <ImageIcon className="w-3.5 h-3.5 text-slate-500" />
             <span>Kachha Bill / Handwritten Parchi OCR</span>
           </label>
@@ -449,45 +505,60 @@ export const CaptureTerminal: React.FC<CaptureTerminalProps> = ({
           </button>
         </div>
 
-        {/* Hidden File Input */}
+        {/* Hidden Native File Input */}
         <input
+          id="bill-image-file-input"
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/png,image/jpeg,image/jpg,image/webp"
           className="hidden"
           onChange={(e) => {
-            if (e.target.files?.[0]) handleImageFile(e.target.files[0]);
+            if (e.target.files && e.target.files[0]) {
+              handleImageFile(e.target.files[0]);
+            }
           }}
         />
 
         {imagePreview ? (
           /* Image Attached Preview Card */
-          <div className="relative rounded-xl border border-slate-200 bg-slate-50/60 p-3 flex items-center justify-between gap-3 overflow-hidden">
+          <div className="relative rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 flex items-center justify-between gap-3 overflow-hidden shadow-2xs">
             <div className="flex items-center gap-3 min-w-0">
-              <img
-                src={imagePreview}
-                alt="Uploaded Kachha Bill"
-                className="w-14 h-14 object-cover rounded-lg border border-slate-200 shrink-0 bg-white shadow-2xs"
-              />
+              <div className="relative shrink-0">
+                <img
+                  src={imagePreview}
+                  alt="Uploaded Kachha Bill"
+                  className="w-16 h-16 object-cover rounded-lg border border-slate-200 bg-white shadow-2xs"
+                />
+                {isImageEncoding && (
+                  <div className="absolute inset-0 bg-black/40 rounded-lg flex items-center justify-center">
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                  </div>
+                )}
+              </div>
               <div className="min-w-0">
-                <div className="font-mono text-xs font-medium text-slate-800 truncate">
+                <div className="font-mono text-xs font-semibold text-slate-800 truncate">
                   {imageFileName || 'kachha_bill.png'}
                 </div>
-                <div className="text-[11px] text-emerald-600 font-medium flex items-center gap-1 mt-0.5">
-                  <Check className="w-3 h-3" />
-                  <span>Ready for Multimodal Vision OCR</span>
+                <div className="text-[11px] text-slate-500 font-mono mt-0.5 flex items-center gap-2">
+                  <span>{imageFileSize || 'Image'}</span>
+                  <span>•</span>
+                  <span className="uppercase">{imageMimeType.replace('image/', '')}</span>
+                </div>
+                <div className="text-[11px] text-emerald-700 font-medium flex items-center gap-1 mt-1">
+                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Base64 Encoded • Ready for Gemini Vision OCR</span>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-1 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0">
               <button
                 type="button"
-                onClick={() => handleLoadSampleBill(activePreset)}
-                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 rounded-lg transition-colors cursor-pointer"
-                title="Regenerate sample bill"
+                onClick={triggerFileInput}
+                className="px-2.5 py-1 text-xs text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                title="Change image file"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
+                Change
               </button>
               <button
                 type="button"
@@ -495,6 +566,8 @@ export const CaptureTerminal: React.FC<CaptureTerminalProps> = ({
                   setImagePreview(null);
                   setImageBase64(null);
                   setImageFileName('');
+                  setImageFileSize('');
+                  if (fileInputRef.current) fileInputRef.current.value = '';
                 }}
                 className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                 title="Remove image"
@@ -504,28 +577,41 @@ export const CaptureTerminal: React.FC<CaptureTerminalProps> = ({
             </div>
           </div>
         ) : (
-          /* Dropzone */
+          /* Active Drag & Drop Zone with Direct Browse Trigger */
           <div
-            onDragEnter={handleDrag}
-            onDragLeave={handleDrag}
-            onDragOver={handleDrag}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
             onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-xl p-4 sm:p-5 text-center cursor-pointer transition-all ${
+            onClick={triggerFileInput}
+            className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all ${
               dragActive
-                ? 'border-indigo-500 bg-indigo-50/40'
-                : 'border-slate-200 hover:border-slate-300 bg-slate-50/40 hover:bg-slate-50'
+                ? 'border-indigo-600 bg-indigo-50/70 ring-2 ring-indigo-500/20'
+                : 'border-slate-200 hover:border-slate-300 bg-slate-50/40 hover:bg-slate-50/80'
             }`}
           >
-            <div className="flex flex-col items-center justify-center gap-1.5">
-              <div className="w-9 h-9 rounded-xl bg-white border border-slate-200/80 shadow-2xs flex items-center justify-center text-slate-500">
-                <Upload className="w-4 h-4" />
+            <div className="flex flex-col items-center justify-center gap-2">
+              <div
+                className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                  dragActive
+                    ? 'bg-indigo-600 text-white scale-110 shadow-sm'
+                    : 'bg-white border border-slate-200/80 shadow-2xs text-slate-500'
+                }`}
+              >
+                <Upload className="w-5 h-5" />
               </div>
-              <div className="text-xs text-slate-700 font-medium mt-1">
-                Drop bill photo here, or <span className="text-indigo-600 underline">browse</span>
+              <div className="text-xs font-medium text-slate-800">
+                {dragActive ? (
+                  <span className="text-indigo-700 font-semibold">Drop your Kachha Bill image now</span>
+                ) : (
+                  <span>
+                    Drag & Drop Kachha Bill photo here, or{' '}
+                    <span className="text-indigo-600 underline font-semibold">Browse Files</span>
+                  </span>
+                )}
               </div>
-              <div className="text-[11px] text-slate-400">
-                JPG, PNG, WEBP or 1-click test with sample bill above
+              <div className="text-[11px] text-slate-400 max-w-xs">
+                Supports JPG, PNG, WEBP • Paste screenshot with Ctrl+V or click "Load Sample" above
               </div>
             </div>
           </div>
@@ -569,7 +655,7 @@ export const CaptureTerminal: React.FC<CaptureTerminalProps> = ({
         </div>
       </div>
 
-      {/* 6. Primary CTA Button */}
+      {/* 6. Primary CTA Button with Dynamic Multimodal Indicator */}
       <button
         type="button"
         onClick={handleSubmit}
@@ -588,7 +674,11 @@ export const CaptureTerminal: React.FC<CaptureTerminalProps> = ({
         ) : (
           <>
             <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
-            <span>⚡ Run AI Forensic Audit</span>
+            <span>
+              {imageBase64
+                ? '⚡ Run AI Multimodal OCR Audit (Bill Attached)'
+                : '⚡ Run AI Forensic Audit'}
+            </span>
           </>
         )}
       </button>

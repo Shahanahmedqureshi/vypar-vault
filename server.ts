@@ -313,10 +313,12 @@ You MUST reply with ONLY valid raw JSON matching this schema:
 
         // Image inlineData part
         if (imageBase64) {
-          const cleanB64 = imageBase64.replace(/^data:[a-zA-Z0-9/+-]+;base64,/, '');
+          const cleanB64 = imageBase64.includes(';base64,')
+            ? imageBase64.split(';base64,')[1]
+            : imageBase64;
           parts.push({
             inlineData: {
-              data: cleanB64,
+              data: cleanB64.trim(),
               mimeType: mimeType || 'image/jpeg',
             },
           });
@@ -324,10 +326,12 @@ You MUST reply with ONLY valid raw JSON matching this schema:
 
         // Audio inlineData part
         if (audioBase64) {
-          const cleanAudioB64 = audioBase64.replace(/^data:[a-zA-Z0-9/+-]+;base64,/, '');
+          const cleanAudioB64 = audioBase64.includes(';base64,')
+            ? audioBase64.split(';base64,')[1]
+            : audioBase64;
           parts.push({
             inlineData: {
-              data: cleanAudioB64,
+              data: cleanAudioB64.trim(),
               mimeType: audioMimeType || 'audio/mp3',
             },
           });
@@ -383,6 +387,123 @@ You MUST reply with ONLY valid raw JSON matching this schema:
     engine: finalEngineUsed,
     latency: latencySeconds,
     data: voucherData,
+  });
+});
+
+// Dedicated endpoint: AI Stock Predictor & Inventory Advisory
+app.post('/api/inventory-advisor', async (req, res) => {
+  const { query, category } = req.body || {};
+  const userQuery = (query || '').trim();
+
+  if (!userQuery) {
+    return res.status(400).json({ error: 'Query is required' });
+  }
+
+  const startTime = Date.now();
+  let strategyData: any = null;
+  let engineUsed = 'LOCAL-INVENTORY-RULE-ENGINE';
+
+  if (ai) {
+    const prompt = `You are "Gemma 4 Inventory Advisor" — an expert B2B supply-chain and FMCG/pharma/retail merchandise consultant for Indian wholesale mandis and retail stores (Kirana, Medical Stores, Hardware & General Traders in Madhya Pradesh / Maharashtra / North India).
+
+The user is asking an inventory or seasonal stocking query:
+"${userQuery}"
+${category ? `Category context: ${category}` : ''}
+
+Provide a crisp, actionable, realistic 3-bullet point stock strategy tailored specifically for Indian shopkeepers.
+Include practical numbers (e.g. buffer stock percentages, days of inventory, wholesale payment terms, supplier credit cycles).
+
+Return pure JSON with this EXACT structure:
+{
+  "summary": "1-sentence executive summary in easy Hinglish/English",
+  "bullets": [
+    "Bullet 1: Immediate procurement lead-time & suggested quantities/SKUs.",
+    "Bullet 2: Cash-flow management & distributor payment/margin protection.",
+    "Bullet 3: Dead-stock prevention & secondary liquidation hedge."
+  ],
+  "recommendedAction": "A direct 4-7 word imperative action (e.g. Advance-order 35 tins refined oil before Friday)",
+  "riskLevel": "Low" or "Moderate" or "High"
+}`;
+
+    const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    for (const model of candidateModels) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+          },
+        });
+
+        const raw = response.text || '';
+        const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+        strategyData = JSON.parse(cleaned);
+        engineUsed = model;
+        break;
+      } catch (err: any) {
+        console.warn(`Advisor model ${model} failed:`, err?.message || err);
+      }
+    }
+  }
+
+  // Heuristic intelligent fallback if model call failed or no key
+  if (!strategyData) {
+    const lower = userQuery.toLowerCase();
+    if (lower.includes('diwali') || lower.includes('festival') || lower.includes('त्यौहार')) {
+      strategyData = {
+        summary: "दिवाली सीज़न में हाई-टर्नओवर कुकिंग ऑयल, मैदा, ड्राई फ्रूट्स और पैकेज्ड गिफ्ट पैक पर 2-हफ़्ते पहले प्रोक्योरमेंट लॉक करें।",
+        bullets: [
+          "Procure 45-60 days forward inventory of Refined Oil 15L tins & Sugar 50kg bags at least 18 days before Dhanteras to capture 3.5% early-truck discount.",
+          "Limit credit/Udhaar to retailers above 21 days; insist on 40% upfront cash for festival-special confectionery orders to preserve liquidity.",
+          "Stock pre-packaged dry fruit gift hampers on 100% sale-or-return agreement with local packers to avoid post-Diwali dead stock."
+        ],
+        recommendedAction: "Pre-book 60 tins refined oil before wholesale rate hike",
+        riskLevel: "Moderate"
+      };
+    } else if (lower.includes('summer') || lower.includes('ors') || lower.includes('hydration') || lower.includes('गर्मी')) {
+      strategyData = {
+        summary: "Summer Heat Wave forecast indicates +45% surge in electrolyte powder, glucose-D, and cold beverages.",
+        bullets: [
+          "Ramp up ORS sachet stock (WHO formulation & Electral) to 120+ units; maintain reorder trigger at 30 units during peak 42°C+ temperature windows.",
+          "Negotiate direct carton discounts on Glucose powder & packaged energy drinks with local C&F agents instead of buying single jars.",
+          "Allocate eye-level counter display for single-serve sachet strips (₹5 to ₹25 MRP) for high-velocity impulse sales."
+        ],
+        recommendedAction: "Replenish 150 ORS boxes immediately before heatwave peak",
+        riskLevel: "Low"
+      };
+    } else if (lower.includes('cough') || lower.includes('dead') || lower.includes('expiry') || lower.includes('liquidat')) {
+      strategyData = {
+        summary: "Identify slow-moving batches with <90 days shelf-life to liquidate working capital immediately.",
+        bullets: [
+          "Audit batch expiry on cold/cough syrups and seasonal antibiotics; bundle with fast-moving paracetamol/vitamin C at 8% consumer discount.",
+          "Contact company MR / distributor for credit note exchange on unsold monsoon inventory before 45-day manufacturer return window closes.",
+          "Reinvest recovered cash into high-velocity daily FMCG essentials to prevent dead working capital accumulation."
+        ],
+        recommendedAction: "Clear remaining batch via combo discount to unlock ₹38,400",
+        riskLevel: "High"
+      };
+    } else {
+      strategyData = {
+        summary: "Smart Inventory Balancing: Align order cycles with 14-day vendor credit cycles and high-demand forecast.",
+        bullets: [
+          "Prioritize A-category fast movers (daily staple groceries / primary OTC analgesics) with 10-day rolling safety buffer.",
+          "Cap total Udhaar ledger exposure at 35% of total monthly turnover to protect working capital for fresh seasonal buys.",
+          "Review slow-moving SKUs weekly: markdown items stagnant for 30+ days by 5% to maintain healthy inventory velocity."
+        ],
+        recommendedAction: "Audit top 10 velocity SKUs and rebalance working capital",
+        riskLevel: "Moderate"
+      };
+    }
+    engineUsed = 'LOCAL-INVENTORY-RULE-ENGINE';
+  }
+
+  const latencySeconds = Number(((Date.now() - startTime) / 1000).toFixed(2));
+  res.json({
+    success: true,
+    engine: engineUsed,
+    latency: latencySeconds,
+    data: strategyData,
   });
 });
 

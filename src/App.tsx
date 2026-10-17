@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { BarChart3, TrendingUp, Sparkles } from 'lucide-react';
 import { TopNavbar } from './components/TopNavbar';
 import { KpiBentoRow } from './components/KpiBentoRow';
 import { CaptureTerminal } from './components/CaptureTerminal';
 import { ForensicVoucher } from './components/ForensicVoucher';
 import { MasterExcelRegister } from './components/MasterExcelRegister';
+import { StockPredictor } from './components/StockPredictor';
 import { CloudExcelModal } from './components/CloudExcelModal';
 import { INITIAL_VOUCHERS } from './data/initialLedger';
 import { Voucher } from './types/voucher';
@@ -25,6 +27,7 @@ export default function App() {
     return vouchers.length > 0 ? vouchers[0] : null;
   });
 
+  const [activeTab, setActiveTab] = useState<'audit' | 'stock'>('audit');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isCloudExcelOpen, setIsCloudExcelOpen] = useState<boolean>(false);
 
@@ -224,48 +227,101 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans selection:bg-slate-900 selection:text-white antialiased">
-      {/* 1. Top Minimal Navbar */}
+      {/* 1. Top Minimal Navbar with navigation tabs */}
       <TopNavbar
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
         onOpenCloudExcel={() => setIsCloudExcelOpen(true)}
         onExportCsv={handleExportCsv}
       />
 
       {/* Main Workspace (Bento Layout) */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-5 sm:px-8 py-7 flex flex-col gap-6">
-        {/* 2. Compact 3-Card KPI Row */}
-        <KpiBentoRow vouchers={vouchers} />
-
-        {/* 3. Main 2-Column Workspace (grid-cols-12 gap-6) */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left Column (5 Cols — Multimodal Capture Studio) */}
-          <div className="lg:col-span-5 flex flex-col">
-            <CaptureTerminal
-              onAudit={handleAudit}
-              isLoading={isLoading}
-            />
+        {/* Workspace Sub-Header & Top-Right Section Navigation */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200/70">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span className="text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
+                VyaparVault ERP Suite // Indore Hub
+              </span>
+            </div>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5">
+              {activeTab === 'audit' ? 'Forensic Accounting & Multimodal Khata' : 'AI Stock Predictor & Seasonal Demand Forecasting'}
+            </h1>
           </div>
 
-          {/* Right Column (7 Cols — Aesthetic Digital Khata Voucher) */}
-          <div className="lg:col-span-7 flex flex-col">
-            <ForensicVoucher
-              voucher={activeVoucher}
-              onAppendToRegister={handleAppendToRegister}
-              onUpdateVoucher={handleUpdateVoucher}
-              isAppended={isCurrentAppended}
-            />
+          {/* Section Navigation Header at Top Right of Workspace */}
+          <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200/80 self-start sm:self-auto shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setActiveTab('audit')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                activeTab === 'audit'
+                  ? 'bg-white text-slate-950 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5 text-slate-700" />
+              <span>📊 Forensic Audit</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('stock')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                activeTab === 'stock'
+                  ? 'bg-white text-slate-950 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+              }`}
+            >
+              <TrendingUp className="w-3.5 h-3.5 text-amber-600" />
+              <span>📈 AI Stock Predictor</span>
+            </button>
           </div>
         </div>
 
-        {/* 4. Bottom Full-Width Master Ledger */}
-        <div className="w-full">
-          <MasterExcelRegister
-            vouchers={vouchers}
-            selectedVoucherId={activeVoucher?.id || null}
-            onSelectVoucher={(v) => setActiveVoucher(v)}
-            onExportCsv={handleExportCsv}
-            onResetToDefault={handleResetToDefault}
-          />
-        </div>
+        {activeTab === 'audit' ? (
+          <>
+            {/* 2. Compact 3-Card KPI Row */}
+            <KpiBentoRow vouchers={vouchers} />
+
+            {/* 3. Main 2-Column Workspace (grid-cols-12 gap-6) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Left Column (5 Cols — Multimodal Capture Studio) */}
+              <div className="lg:col-span-5 flex flex-col">
+                <CaptureTerminal
+                  onAudit={handleAudit}
+                  isLoading={isLoading}
+                />
+              </div>
+
+              {/* Right Column (7 Cols — Aesthetic Digital Khata Voucher) */}
+              <div className="lg:col-span-7 flex flex-col">
+                <ForensicVoucher
+                  voucher={activeVoucher}
+                  onAppendToRegister={handleAppendToRegister}
+                  onUpdateVoucher={handleUpdateVoucher}
+                  isAppended={isCurrentAppended}
+                />
+              </div>
+            </div>
+
+            {/* 4. Bottom Full-Width Master Ledger */}
+            <div className="w-full">
+              <MasterExcelRegister
+                vouchers={vouchers}
+                selectedVoucherId={activeVoucher?.id || null}
+                onSelectVoucher={(v) => setActiveVoucher(v)}
+                onExportCsv={handleExportCsv}
+                onResetToDefault={handleResetToDefault}
+              />
+            </div>
+          </>
+        ) : (
+          /* Dedicated AI Stock & Seasonal Predictor Dashboard */
+          <StockPredictor />
+        )}
       </main>
 
       {/* Minimalist Footer */}
