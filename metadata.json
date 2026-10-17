@@ -1,0 +1,6 @@
+{
+  "name": "VYAPARVAULT // KHATA ERP v2.4",
+  "description": "Production-grade Indian B2B Wholesale Accounting & Forensic Khata Terminal with multimodal OCR, voice audio transcription, and automated balance discrepancy auditing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
